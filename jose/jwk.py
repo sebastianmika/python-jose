@@ -13,6 +13,8 @@ import Crypto.Hash.SHA512
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
 
+from Crypto.Util.asn1 import DerSequence
+
 import ecdsa
 
 from jose.constants import ALGORITHMS
@@ -45,7 +47,7 @@ def base64_to_long(data):
     return int_arr_to_long(struct.unpack('%sB' % len(_d), _d))
 
 
-def construct(key_data, algorithm=None):
+def construct(key_data, algorithm=None, is_x509=False):
     """
     Construct a Key object for the given algorithm with the given
     key_data.
@@ -62,7 +64,7 @@ def construct(key_data, algorithm=None):
         return HMACKey(key_data, algorithm)
 
     if algorithm in ALGORITHMS.RSA:
-        return RSAKey(key_data, algorithm)
+        return RSAKey(key_data, algorithm, is_x509=is_x509)
 
     if algorithm in ALGORITHMS.EC:
         return ECKey(key_data, algorithm)
@@ -177,7 +179,7 @@ class RSAKey(Key):
     prepared_key = None
     hash_alg = None
 
-    def __init__(self, key, algorithm):
+    def __init__(self, key, algorithm, is_x509=False):
 
         if algorithm not in self.valid_hash_algs:
             raise JWKError('hash_alg: %s is not a valid hash algorithm' % algorithm)
@@ -203,6 +205,22 @@ class RSAKey(Key):
             return
 
         raise JWKError('Unable to parse an RSA_JWK from key: %s' % key)
+
+    def _get_from_x509(self, cert):
+        """Extract public key from x.509 certificate. For details see
+
+        https://github.com/google/oauth2client/blob/master/oauth2client/_pycrypto_crypt.py
+        -> PyCryptoVerifier.from_string
+
+        or
+
+        http://stackoverflow.com/questions/12911373/how-do-i-use-a-x509-certificate-with-pycrypto
+        """
+        cs = DerSequence()
+        cs.decode(cert)
+        ts = DerSequence()
+        ts.decode(cert[0])
+        return ts[6]
 
     def _process_jwk(self, jwk_dict):
         if not jwk_dict.get('kty') == 'RSA':
